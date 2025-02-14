@@ -25,6 +25,7 @@ import { Pencil, X } from 'lucide-react';
 import { FeatureName, isFeatureNameDisabled } from '../../../../../../../workbench/contrib/void/common/voidSettingsTypes.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { ChatMessageLocation } from '../../../searchAndReplaceService.js';
+import { ContextSection } from './ContextSection.js';
 
 
 
@@ -695,7 +696,7 @@ const ChatBubble = ({ chatMessage, isLoading, messageIdx }: { chatMessage: ChatM
 		`}
 		onMouseEnter={() => setIsHovered(true)}
 		onMouseLeave={() => setIsHovered(false)}
-	>
+>
 		<div
 			// style chatbubble according to role
 			className={`
@@ -787,21 +788,44 @@ export const SidebarChat = () => {
 
 	useScrollbarStyles(sidebarRef)
 
+	const [contextFiles, setContextFiles] = useState<File[]>([])
+
+	const processContextFiles = async (files: File[]): Promise<string> => {
+		const contexts = await Promise.all(files.map(file => {
+			if (
+				file.type.startsWith("text/") ||
+				file.name.endsWith(".log") ||
+				file.name.endsWith(".csv") ||
+				file.name.endsWith(".json")
+			) {
+				return new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = () => resolve(reader.result as string);
+					reader.onerror = () => resolve(`Error reading ${file.name}`);
+					reader.readAsText(file);
+				});
+			} else {
+				return Promise.resolve(`File ${file.name} (${file.size} bytes, type: ${file.type})`);
+			}
+		}));
+		return contexts.join("\n");
+	};
 
 	const onSubmit = useCallback(async () => {
+		if (isDisabled || isStreaming) return;
 
-		if (isDisabled) return
-		if (isStreaming) return
+		const additionalContext = await processContextFiles(contextFiles);
+		const baseMessage = textAreaRef.current?.value ?? '';
+		const userMessage = additionalContext
+			? `${baseMessage}\n\nAdditional Context:\n${additionalContext}`
+			: baseMessage;
 
-		// send message to LLM
-		const userMessage = textAreaRef.current?.value ?? ''
-		await chatThreadsService.addUserMessageAndStreamResponse(userMessage)
+		await chatThreadsService.addUserMessageAndStreamResponse(userMessage);
 
-		setStaging({ ...staging, selections: [], }) // clear staging
-		textAreaFnsRef.current?.setValue('')
-		textAreaRef.current?.focus() // focus input after submit
-
-	}, [chatThreadsService, isDisabled, isStreaming, textAreaRef, textAreaFnsRef, staging, setStaging])
+		setStaging({ ...staging, selections: [] });
+		textAreaFnsRef.current?.setValue('');
+		textAreaRef.current?.focus();
+	}, [chatThreadsService, isDisabled, isStreaming, textAreaRef, textAreaFnsRef, staging, setStaging, contextFiles]);
 
 	const onAbort = () => {
 		const threadId = currentThread.id
@@ -905,11 +929,26 @@ export const SidebarChat = () => {
 		</VoidChatArea>
 	</div>
 
+	const handleFilesSelected = (files: FileList) => {
+		setContextFiles(prev => [...prev, ...Array.from(files)]);
+	};
+
+	const handleRemoveFile = (index: number) => {
+		setContextFiles(prev => prev.filter((_, i) => i !== index));
+	};
+
 	return <div ref={sidebarRef} className={`w-full h-full`}>
 		{threadSelector}
 
-		{messagesHTML}
+		<div className="mb-4">
+			<ContextSection
+				onFilesSelected={handleFilesSelected}
+				selectedFiles={contextFiles}
+				onRemoveFile={handleRemoveFile}
+			/>
+		</div>
 
+		{messagesHTML}
 		{inputForm}
 
 	</div>
