@@ -51,6 +51,15 @@ function code() {
 	exec "$CODE" . $DISABLE_TEST_EXTENSION "$@"
 }
 
+# Function to start the Actix-web server
+function start_server() {
+    echo "Starting Actix-web server in release mode..."
+    # Navigate to the directory where your Rust project is located
+    cd "$ROOT/src/vs/workbench/contrib/void/rust_backend" || exit
+    # Start the server in release mode in the background
+    cargo run --release &
+}
+
 function code-wsl()
 {
 	HOST_IP=$(echo "" | powershell.exe -noprofile -Command "& {(Get-NetIPAddress | Where-Object {\$_.InterfaceAlias -like '*WSL*' -and \$_.AddressFamily -eq 'IPv4'}).IPAddress | Write-Host -NoNewline}")
@@ -75,6 +84,9 @@ function code-wsl()
 		fi
 	fi
 }
+
+# Start the Actix-web server before launching VSCode
+start_server
 
 if [ "$IN_WSL" == "true" ] && [ -z "$DISPLAY" ]; then
 	code-wsl "$@"
